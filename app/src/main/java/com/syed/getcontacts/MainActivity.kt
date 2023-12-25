@@ -6,6 +6,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import android.provider.ContactsContract.CommonDataKinds.Email
+import android.provider.ContactsContract.CommonDataKinds.Phone
+import android.provider.ContactsContract.Data
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -59,7 +63,7 @@ fun OpenAndSelectContact() {
     var contactNumber by remember { mutableStateOf("") }
 
     // Create a intent variable
-    val contactIntent = Intent(Intent.ACTION_PICK).apply {
+    val contactIntent = Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI).apply {
         type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
     }
     contactIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -70,13 +74,45 @@ fun OpenAndSelectContact() {
         if (result.resultCode == Activity.RESULT_OK) {
             val contactUri: Uri? = result.data?.data
 
-            val projection: Array<String> = arrayOf(
+            /*val projection: Array<String> = arrayOf(
                 ContactsContract.CommonDataKinds.Phone.NUMBER,
                 ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
-            )
+            )*/
 
-            contactUri?.let {
-                context.contentResolver.query(it, projection, null, null, null).use { cursor ->
+            contactUri?.let { uri ->
+
+                // Get contact-ID and name
+                val projection: Array<String> = arrayOf(
+                    ContactsContract.Contacts._ID,
+                    ContactsContract.Contacts.DISPLAY_NAME
+                )
+                var id = -1L
+                context.contentResolver.query(uri, projection, null, null, null).use { cursor ->
+                    if (cursor!!.moveToFirst()) {
+                        id = cursor.getLong(0)
+                        val name = cursor.getString(1)
+                        Log.d("syed", "id: $id, name: $name")
+                    }
+                }
+
+                // Get e-mail and phone using the contact-ID
+                val projection2: Array<String> = arrayOf(
+                    Data.MIMETYPE, Data.DATA1
+                )
+                val selection2 = Data.CONTACT_ID + "=" + id + " AND " + Data.MIMETYPE + " IN ('" + ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE + "', '" + Email.CONTENT_ITEM_TYPE + "')"
+                context.contentResolver.query(Data.CONTENT_URI, projection2, selection2, null, null).use { cursor ->
+                    while(cursor!!.moveToNext()) {
+                        val mimetype = cursor.getString(0)
+                        val data = cursor.getString(1)
+                        if (mimetype == Phone.CONTENT_ITEM_TYPE) {
+                            Log.d("syed", "Got phone: $data")
+                        } else {
+                            Log.d("syed", "Got email: $data")
+                        }
+                    }
+                }
+
+                /*context.contentResolver.query(it, projection, null, null, null).use { cursor ->
                     // If the cursor returned is validl get the phone number and (or) name
                     if (cursor!!.moveToFirst()) {
                         val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
@@ -92,7 +128,7 @@ fun OpenAndSelectContact() {
                             context, "Number is $number & name is $name", Toast.LENGTH_SHORT
                         ).show()
                     }
-                }
+                }*/
             }
         }
     }
