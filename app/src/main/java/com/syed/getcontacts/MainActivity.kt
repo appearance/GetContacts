@@ -6,6 +6,11 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.ContactsContract
+import android.provider.ContactsContract.CommonDataKinds.Email
+import android.provider.ContactsContract.CommonDataKinds.Phone
+import android.provider.ContactsContract.Contacts
+import android.provider.ContactsContract.Data
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,44 +60,55 @@ class MainActivity : ComponentActivity() {
 @Preview(showBackground=true)
 fun OpenAndSelectContact() {
     val context = LocalContext.current
-    var contactName by remember { mutableStateOf("") }
-    var contactNumber by remember { mutableStateOf("") }
+    var logData by remember { mutableStateOf("") }
 
     // Create a intent variable
-    val contactIntent = Intent(Intent.ACTION_PICK).apply {
-        type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
-    }
+    val contactIntent = Intent(Intent.ACTION_PICK, Contacts.CONTENT_URI)
     contactIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
 
     val launchContactForResult = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val contactUri: Uri? = result.data?.data
+            val uri: Uri? = result.data?.data
 
-            val projection: Array<String> = arrayOf(
-                ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
-            )
+            if (uri != null) {
+                val cr = context.contentResolver
+                val cur = cr.query(uri, null, null, null, null)
+                cur?.moveToFirst()
 
-            contactUri?.let {
-                context.contentResolver.query(it, projection, null, null, null).use { cursor ->
-                    // If the cursor returned is validl get the phone number and (or) name
-                    if (cursor!!.moveToFirst()) {
-                        val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                        val number = cursor.getString(numberIndex)
+                val id = cur?.getColumnIndex(Contacts._ID)?.let { cur.getString(it) }
+                val name = cur?.getColumnIndex(Contacts.DISPLAY_NAME)?.let { cur.getString(it) }
+                logData = "Name: $name\n"
 
-                        val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                        val name = cursor.getString(nameIndex)
-                        contactName = name
-                        contactNumber = number
-
-                        // Do somethingwith the phone number
-                        Toast.makeText(
-                            context, "Number is $number & name is $name", Toast.LENGTH_SHORT
-                        ).show()
+                val phoneCur = cr.query(Phone.CONTENT_URI, null, Phone.CONTACT_ID + "=?",
+                    arrayOf(id), null)
+                phoneCur?.let {
+                    while (it.moveToNext()) {
+                        val phone = it.getColumnIndex(Phone.NUMBER).let { numberIndex -> it.getString(numberIndex) }
+                        val type = it.getColumnIndex(Phone.TYPE).let { typeIndex ->
+                            it.getInt(typeIndex)
+                        }
+                        val phoneLabel = context.resources.getString(Phone.getTypeLabelResource(type))
+                        logData += "$phoneLabel: $phone\n"
                     }
+                    it.close()
                 }
+
+                val emailCur = cr.query(Email.CONTENT_URI, null, Email.CONTACT_ID + "=?",
+                    arrayOf(id), null)
+                emailCur?.let {
+                    while (it.moveToNext()) {
+                        val email = it.getColumnIndex(Email.ADDRESS).let { emailIndex -> it.getString(emailIndex) }
+                        val type = it.getColumnIndex(Email.TYPE).let { typeIndex ->
+                            it.getInt(typeIndex)
+                        }
+                        val emailLabel = context.resources.getString(Email.getTypeLabelResource(type))
+                        logData += "$emailLabel: $email\n"
+                    }
+                    it.close()
+                }
+                cur?.close()
             }
         }
     }
@@ -133,7 +149,6 @@ fun OpenAndSelectContact() {
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Selected Contact Name: $contactName")
-        Text(text = "Selected Contact Number: $contactNumber")
+        Text(text = logData)
     }
 }
