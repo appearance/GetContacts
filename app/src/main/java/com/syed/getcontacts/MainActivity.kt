@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.ContactsContract.CommonDataKinds.Email
 import android.provider.ContactsContract.CommonDataKinds.Phone
+import android.provider.ContactsContract.Contacts
 import android.provider.ContactsContract.Data
 import android.util.Log
 import android.widget.Toast
@@ -59,76 +60,55 @@ class MainActivity : ComponentActivity() {
 @Preview(showBackground=true)
 fun OpenAndSelectContact() {
     val context = LocalContext.current
-    var contactName by remember { mutableStateOf("") }
-    var contactNumber by remember { mutableStateOf("") }
+    var logData by remember { mutableStateOf("") }
 
     // Create a intent variable
-    val contactIntent = Intent(Intent.ACTION_PICK, ContactsContract.Contacts.CONTENT_URI).apply {
-        type = ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE
-    }
+    val contactIntent = Intent(Intent.ACTION_PICK, Contacts.CONTENT_URI)
     contactIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
 
     val launchContactForResult = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val contactUri: Uri? = result.data?.data
+            val uri: Uri? = result.data?.data
 
-            /*val projection: Array<String> = arrayOf(
-                ContactsContract.CommonDataKinds.Phone.NUMBER,
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
-            )*/
+            if (uri != null) {
+                val cr = context.contentResolver
+                val cur = cr.query(uri, null, null, null, null)
+                cur?.moveToFirst()
 
-            contactUri?.let { uri ->
+                val id = cur?.getColumnIndex(Contacts._ID)?.let { cur.getString(it) }
+                val name = cur?.getColumnIndex(Contacts.DISPLAY_NAME)?.let { cur.getString(it) }
+                logData = "Name: $name\n"
 
-                // Get contact-ID and name
-                val projection: Array<String> = arrayOf(
-                    ContactsContract.Contacts._ID,
-                    ContactsContract.Contacts.DISPLAY_NAME
-                )
-                var id = -1L
-                context.contentResolver.query(uri, projection, null, null, null).use { cursor ->
-                    if (cursor!!.moveToFirst()) {
-                        id = cursor.getLong(0)
-                        val name = cursor.getString(1)
-                        Log.d("syed", "id: $id, name: $name")
-                    }
-                }
-
-                // Get e-mail and phone using the contact-ID
-                val projection2: Array<String> = arrayOf(
-                    Data.MIMETYPE, Data.DATA1
-                )
-                val selection2 = Data.CONTACT_ID + "=" + id + " AND " + Data.MIMETYPE + " IN ('" + ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE + "', '" + Email.CONTENT_ITEM_TYPE + "')"
-                context.contentResolver.query(Data.CONTENT_URI, projection2, selection2, null, null).use { cursor ->
-                    while(cursor!!.moveToNext()) {
-                        val mimetype = cursor.getString(0)
-                        val data = cursor.getString(1)
-                        if (mimetype == Phone.CONTENT_ITEM_TYPE) {
-                            Log.d("syed", "Got phone: $data")
-                        } else {
-                            Log.d("syed", "Got email: $data")
+                val phoneCur = cr.query(Phone.CONTENT_URI, null, Phone.CONTACT_ID + "=?",
+                    arrayOf(id), null)
+                phoneCur?.let {
+                    while (it.moveToNext()) {
+                        val phone = it.getColumnIndex(Phone.NUMBER).let { numberIndex -> it.getString(numberIndex) }
+                        val type = it.getColumnIndex(Phone.TYPE).let { typeIndex ->
+                            it.getInt(typeIndex)
                         }
+                        val phoneLabel = context.resources.getString(Phone.getTypeLabelResource(type))
+                        logData += "$phoneLabel: $phone\n"
                     }
+                    it.close()
                 }
 
-                /*context.contentResolver.query(it, projection, null, null, null).use { cursor ->
-                    // If the cursor returned is validl get the phone number and (or) name
-                    if (cursor!!.moveToFirst()) {
-                        val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                        val number = cursor.getString(numberIndex)
-
-                        val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                        val name = cursor.getString(nameIndex)
-                        contactName = name
-                        contactNumber = number
-
-                        // Do somethingwith the phone number
-                        Toast.makeText(
-                            context, "Number is $number & name is $name", Toast.LENGTH_SHORT
-                        ).show()
+                val emailCur = cr.query(Email.CONTENT_URI, null, Email.CONTACT_ID + "=?",
+                    arrayOf(id), null)
+                emailCur?.let {
+                    while (it.moveToNext()) {
+                        val email = it.getColumnIndex(Email.ADDRESS).let { emailIndex -> it.getString(emailIndex) }
+                        val type = it.getColumnIndex(Email.TYPE).let { typeIndex ->
+                            it.getInt(typeIndex)
+                        }
+                        val emailLabel = context.resources.getString(Email.getTypeLabelResource(type))
+                        logData += "$emailLabel: $email\n"
                     }
-                }*/
+                    it.close()
+                }
+                cur?.close()
             }
         }
     }
@@ -169,7 +149,6 @@ fun OpenAndSelectContact() {
         )
 
         Spacer(modifier = Modifier.height(16.dp))
-        Text(text = "Selected Contact Name: $contactName")
-        Text(text = "Selected Contact Number: $contactNumber")
+        Text(text = logData)
     }
 }
